@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Phishle</title>
+  <meta name="description" content="Guess the Phish song in 10 tries. Clues: album, debut, gap, and longest jam.">
+  <meta name="theme-color" content="#101a2e">
+  <!-- Content Security Policy: only this site's own files may load; data is same-origin JSON. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+
+  <!-- PWA + iOS home-screen support -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Phishle">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+
+  <link rel="stylesheet" href="css/style.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn" id="help-btn" type="button" aria-label="How to play">?</button>
+    <h1 class="logo">Phish<span>le</span></h1>
+    <div class="topbar-right">
+      <button class="icon-btn" id="practice-btn" type="button" aria-label="Practice mode" title="Practice mode">∞</button>
+      <button class="icon-btn" id="stats-btn" type="button" aria-label="Statistics" title="Statistics">▥</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <p class="mode-line" id="mode-line">Loading the setlist…</p>
+
+    <form class="search" id="search-form" autocomplete="off" hidden>
+      <label class="visually-hidden" for="guess-input">Guess a Phish song</label>
+      <input id="guess-input" type="text" placeholder="Type a song (or YEM, DWD…)"
+             role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggestions"
+             autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go">
+      <ul class="suggestions" id="suggestions" role="listbox" hidden></ul>
+    </form>
+
+    <p class="counter" id="counter" aria-live="polite"></p>
+
+    <section class="result" id="result" hidden aria-live="polite"></section>
+
+    <ol class="guesses" id="guesses" reversed aria-label="Your guesses"></ol>
+  </main>
+
+  <footer class="footer">
+    Song data courtesy of <a href="https://phish.net" rel="noopener">Phish.net</a> /
+    The Mockingbird Foundation · durations from <a href="https://phish.in" rel="noopener">phish.in</a> ·
+    albums from <a href="https://musicbrainz.org" rel="noopener">MusicBrainz</a>.
+    <span id="data-date"></span> Fan-made; not affiliated with Phish.
+  </footer>
+
+  <dialog id="help-dialog" aria-labelledby="help-title">
+    <form method="dialog"><button class="close-btn" aria-label="Close">×</button></form>
+    <h2 id="help-title">How to play</h2>
+    <p>Guess the Phish song in <strong id="help-max">10</strong> tries. A new song every day at midnight.</p>
+    <p>Each guess shows how it compares to the answer:</p>
+    <ul class="help-list">
+      <li><span class="swatch correct"></span> Match</li>
+      <li><span class="swatch close"></span> Close</li>
+      <li><span class="swatch miss"></span> Not close</li>
+      <li><b>↑ / ↓</b> The answer is higher / lower (later, bigger, longer)</li>
+    </ul>
+    <dl class="help-defs" id="help-defs"></dl>
+  </dialog>
+
+  <dialog id="stats-dialog" aria-labelledby="stats-title">
+    <form method="dialog"><button class="close-btn" aria-label="Close">×</button></form>
+    <h2 id="stats-title">Statistics</h2>
+    <div class="stat-row" id="stat-row"></div>
+    <h3>Guess distribution</h3>
+    <div class="dist" id="dist"></div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+</body>
+</html>

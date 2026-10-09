@@ -1,0 +1,51 @@
+# Daily data refresh. Pulls fresh gaps/play counts from phish.net (and new
+# durations from phish.in for recently played songs), then commits the baked
+# JSON if anything changed. GitHub Pages redeploys automatically on push.
+#
+# Requires a repository secret named PHISHNET_API_KEY
+# (Settings -> Secrets and variables -> Actions). The key never leaves the runner.
+
+name: Refresh song data
+
+on:
+  schedule:
+    - cron: '0 10 * * *' # 10:00 UTC = early morning US Eastern, after last night's show is logged
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # needed to push the refreshed data commit
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build data
+        run: node scripts/build-data.mjs
+        env:
+          PHISHNET_API_KEY: ${{ secrets.PHISHNET_API_KEY }}
+
+      - name: Commit changes
+        run: |
+          if git diff --quiet -- data; then
+            echo "No data changes."
+            exit 0
+          fi
+          git config user.name "bot-bbio"
+          git config user.email "moluscoftw@gmail.com"
+          git add data/songs.json data/schedule.json
+          git commit -m "update: refresh song data"
+          git push

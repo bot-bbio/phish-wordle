@@ -1,0 +1,18 @@
+{
+  "name": "phish-wordle",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Phishle: a daily guess-the-Phish-song game built on phish.net data.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\"",
+    "data": "node scripts/build-data.mjs",
+    "data:full": "node scripts/build-data.mjs --full",
+    "discography": "node scripts/fetch-discography.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "serve": "node scripts/serve.mjs"
+  }
+}
