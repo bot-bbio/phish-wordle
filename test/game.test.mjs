@@ -2,9 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   compareSongs, daysBetween, dailyAnswerId, puzzleNumber, searchSongs, recordResult,
-  emptyStats, shareText, formatDuration, formatDate, localDateString, MAX_GUESSES,
+  emptyStats, shareText, formatDuration, formatDate, formatMonthYear, localDateString, MAX_GUESSES, ATTRIBUTES,
 } from '../js/game.js';
 import { normalizeTitle } from '../js/normalize.js';
+
+// Album fixture: index -> release year (two albums share 2009, like Joy and Party Time).
+const ALBUMS = [1986, 1989, 1990, 1992, 1993, 2009, 2009, 2016].map((year, i) => ({ title: `A${i}`, year, art: null }));
+const cmp = (guess, answer) => compareSongs(guess, answer, ALBUMS);
 
 /** Build a song with sensible defaults so each test states only what it cares about. */
 function song(overrides) {
@@ -26,45 +30,70 @@ test('normalizeTitle folds punctuation, accents, ampersands, and case', () => {
 
 test('identical songs compare as all-correct', () => {
   const s = song({});
-  const result = compareSongs(s, s);
-  for (const key of ['album', 'debut', 'gap', 'longest']) {
+  const result = cmp(s, s);
+  for (const key of ATTRIBUTES) {
     assert.deepEqual(result[key], { status: 'correct', direction: null }, key);
   }
 });
 
-test('album: neighbouring album is close; arrow points toward the answer', () => {
-  assert.deepEqual(compareSongs(song({ album: 3 }), song({ album: 4 })).album, { status: 'close', direction: 'higher' });
-  assert.deepEqual(compareSongs(song({ album: 9 }), song({ album: 2 })).album, { status: 'miss', direction: 'lower' });
+test('album: same album is green, release within 3 years is yellow, arrow follows release year', () => {
+  assert.deepEqual(cmp(song({ album: 3 }), song({ album: 3 })).album, { status: 'correct', direction: null });
+  assert.deepEqual(cmp(song({ album: 1 }), song({ album: 3 })).album, { status: 'close', direction: 'higher' }); // 1989 -> 1992
+  assert.deepEqual(cmp(song({ album: 4 }), song({ album: 0 })).album, { status: 'miss', direction: 'lower' }); // 1993 -> 1986
+  assert.deepEqual(cmp(song({ album: 0 }), song({ album: 3 })).album, { status: 'miss', direction: 'higher' }); // 6 years
+  assert.deepEqual(cmp(song({ album: 5 }), song({ album: 6 })).album, { status: 'close', direction: null }); // same year, other album
+});
+
+test('times played: exact is green, within 25% of the answer is yellow', () => {
+  const answer = song({ timesPlayed: 400 });
+  assert.equal(cmp(song({ timesPlayed: 400 }), answer).timesPlayed.status, 'correct');
+  assert.deepEqual(cmp(song({ timesPlayed: 300 }), answer).timesPlayed, { status: 'close', direction: 'higher' });
+  assert.deepEqual(cmp(song({ timesPlayed: 299 }), answer).timesPlayed, { status: 'miss', direction: 'higher' });
+  assert.deepEqual(cmp(song({ timesPlayed: 500 }), answer).timesPlayed, { status: 'close', direction: 'lower' });
+  // The window scales with the answer: 25% of 40 is 10.
+  assert.equal(cmp(song({ timesPlayed: 51 }), song({ timesPlayed: 40 })).timesPlayed.status, 'miss');
+});
+
+test('last played mirrors the gap color and points the opposite way', () => {
+  const answer = song({ gap: 50, lastPlayed: '2024-08-01' });
+  const recent = cmp(song({ gap: 45, lastPlayed: '2024-12-31' }), answer); // played more recently than the answer
+  assert.deepEqual(recent.gap, { status: 'close', direction: 'higher' });
+  assert.deepEqual(recent.lastPlayed, { status: 'close', direction: 'lower' });
+  const old = cmp(song({ gap: 200, lastPlayed: '2019-02-20' }), answer);
+  assert.deepEqual(old.gap, { status: 'miss', direction: 'lower' });
+  assert.deepEqual(old.lastPlayed, { status: 'miss', direction: 'higher' });
+  const same = cmp(song({ gap: 50, lastPlayed: '2024-08-01' }), answer);
+  assert.deepEqual(same.lastPlayed, { status: 'correct', direction: null });
 });
 
 test('album: missing albums match each other but give no arrow against a real album', () => {
-  assert.deepEqual(compareSongs(song({ album: null }), song({ album: null })).album, { status: 'correct', direction: null });
-  assert.deepEqual(compareSongs(song({ album: null }), song({ album: 5 })).album, { status: 'miss', direction: null });
-  assert.deepEqual(compareSongs(song({ album: 5 }), song({ album: null })).album, { status: 'miss', direction: null });
+  assert.deepEqual(cmp(song({ album: null }), song({ album: null })).album, { status: 'correct', direction: null });
+  assert.deepEqual(cmp(song({ album: null }), song({ album: 5 })).album, { status: 'miss', direction: null });
+  assert.deepEqual(cmp(song({ album: 5 }), song({ album: null })).album, { status: 'miss', direction: null });
 });
 
 test('debut compares by year with a two-year close window', () => {
   const answer = song({ debut: '1994-06-01' });
-  assert.equal(compareSongs(song({ debut: '1994-12-31' }), answer).debut.status, 'correct');
-  assert.deepEqual(compareSongs(song({ debut: '1992-01-01' }), answer).debut, { status: 'close', direction: 'higher' });
-  assert.deepEqual(compareSongs(song({ debut: '1991-12-31' }), answer).debut, { status: 'miss', direction: 'higher' });
-  assert.deepEqual(compareSongs(song({ debut: '1996-03-03' }), answer).debut, { status: 'close', direction: 'lower' });
+  assert.equal(cmp(song({ debut: '1994-12-31' }), answer).debut.status, 'correct');
+  assert.deepEqual(cmp(song({ debut: '1992-01-01' }), answer).debut, { status: 'close', direction: 'higher' });
+  assert.deepEqual(cmp(song({ debut: '1991-12-31' }), answer).debut, { status: 'miss', direction: 'higher' });
+  assert.deepEqual(cmp(song({ debut: '1996-03-03' }), answer).debut, { status: 'close', direction: 'lower' });
 });
 
 test('gap is exact for green and within 10 shows for yellow', () => {
   const answer = song({ gap: 50 });
-  assert.equal(compareSongs(song({ gap: 50 }), answer).gap.status, 'correct');
-  assert.deepEqual(compareSongs(song({ gap: 40 }), answer).gap, { status: 'close', direction: 'higher' });
-  assert.deepEqual(compareSongs(song({ gap: 61 }), answer).gap, { status: 'miss', direction: 'lower' });
+  assert.equal(cmp(song({ gap: 50 }), answer).gap.status, 'correct');
+  assert.deepEqual(cmp(song({ gap: 40 }), answer).gap, { status: 'close', direction: 'higher' });
+  assert.deepEqual(cmp(song({ gap: 61 }), answer).gap, { status: 'miss', direction: 'lower' });
 });
 
 test('longest jam: within a minute is green, within five is yellow, missing audio is a plain miss', () => {
   const answer = song({ longest: { seconds: 1800, date: 'x', venue: 'y' } });
   const withSeconds = (seconds) => song({ longest: { seconds, date: 'x', venue: 'y' } });
-  assert.equal(compareSongs(withSeconds(1750), answer).longest.status, 'correct');
-  assert.deepEqual(compareSongs(withSeconds(1500), answer).longest, { status: 'close', direction: 'higher' });
-  assert.deepEqual(compareSongs(withSeconds(2400), answer).longest, { status: 'miss', direction: 'lower' });
-  assert.deepEqual(compareSongs(song({ longest: null }), answer).longest, { status: 'miss', direction: null });
+  assert.equal(cmp(withSeconds(1750), answer).longest.status, 'correct');
+  assert.deepEqual(cmp(withSeconds(1500), answer).longest, { status: 'close', direction: 'higher' });
+  assert.deepEqual(cmp(withSeconds(2400), answer).longest, { status: 'miss', direction: 'lower' });
+  assert.deepEqual(cmp(song({ longest: null }), answer).longest, { status: 'miss', direction: null });
 });
 
 test('daysBetween counts calendar days, including across DST changes', () => {
@@ -129,10 +158,10 @@ test('shareText renders one emoji row per guess without naming songs', () => {
   const hit = { status: 'correct', direction: null };
   const close = { status: 'close', direction: 'lower' };
   const rows = [
-    { album: miss, debut: close, gap: miss, longest: hit },
-    { album: hit, debut: hit, gap: hit, longest: hit },
+    { album: miss, debut: close, timesPlayed: hit, lastPlayed: miss, gap: miss, longest: hit },
+    { album: hit, debut: hit, timesPlayed: hit, lastPlayed: hit, gap: hit, longest: hit },
   ];
-  assert.equal(shareText(4, rows, true), 'Phishle #4 2/10\n⬛🟨⬛🟩\n🟩🟩🟩🟩');
+  assert.equal(shareText(4, rows, true), 'Phishle #4 2/10\n⬛🟨🟩⬛⬛🟩\n🟩🟩🟩🟩🟩🟩');
   assert.match(shareText(4, rows, false), /^Phishle #4 X\/10/);
 });
 
@@ -140,4 +169,6 @@ test('formatters', () => {
   assert.equal(formatDuration(3016), '50:16');
   assert.equal(formatDuration(65), '1:05');
   assert.equal(formatDate('1995-06-14'), 'Jun 14, 1995');
+  assert.equal(formatMonthYear('2025-08-31'), "Aug '25");
+  assert.equal(formatMonthYear('1999-12-31'), "Dec '99");
 });

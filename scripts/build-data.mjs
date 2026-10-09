@@ -1,8 +1,8 @@
 // Bake the game's data files from three sources:
 //
-//   phish.net  (API v5, needs PHISHNET_API_KEY)  song list, debut, gap, play counts
+//   phish.net  (API v5, needs PHISHNET_API_KEY)  song list, debut, last played, gap, play counts
 //   phish.in   (API v2, open)                    track durations -> longest version
-//   data/discography.json (from MusicBrainz)     studio album membership
+//   data/albums.json (hand-maintained)           album tracklists (see README "Albums")
 //
 // Writes data/songs.json (everything the browser needs) and appends any newly
 // eligible answers to data/schedule.json (the daily puzzle order).
@@ -15,13 +15,16 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { fetchJson, readEnv, sleep } from './lib/http.mjs';
-import { assignAlbums, pickLongestStandalone } from './lib/select.mjs';
+import {
+  assignAlbums, pickLongestStandalone, albumSlug, isAnswerEligible, reshuffleAfter, seededRandom, ANSWER_THRESHOLDS,
+} from './lib/select.mjs';
 import { normalizeTitle } from '../js/normalize.js';
 
 const root = (/** @type {string} */ p) => fileURLToPath(new URL(`../${p}`, import.meta.url));
 const SONGS_PATH = root('data/songs.json');
 const SCHEDULE_PATH = root('data/schedule.json');
-const DISCOGRAPHY_PATH = root('data/discography.json');
+const ALBUMS_PATH = root('data/albums.json');
+const ART_DIR = 'img/albums'; // cover thumbnails from scripts/fetch-album-art.mjs
 
 // Artists credited on phish.net that are really Phish members or their side
 // projects. Songs credited to them count as originals (e.g. "Sand" is credited
@@ -30,10 +33,6 @@ const BAND_ARTISTS = new Set([
   'Phish', 'Trey Anastasio', 'Trey Anastasio Band', 'Mike Gordon', 'Page McConnell',
   'Jon Fishman', 'Ghosts of the Forest', 'Vida Blue', 'Amfibian', 'New York!', 'Oysterhead',
 ]);
-
-// A song must have been played this many times to be a daily answer, so the
-// puzzle stays about songs a regular listener would know.
-const ANSWER_MIN_PLAYS = 40;
 
 // First day of the daily puzzle (puzzle #1). Never change after launch, or
 // every player's puzzle numbering and stats shift.
@@ -83,32 +82,6 @@ async function longestPerformance(slug) {
   return null;
 }
 
-/** Deterministic PRNG (mulberry32) so the schedule shuffle is reproducible. */
-function seededRandom(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/**
- * @template T
- * @param {T[]} items
- * @param {() => number} rand
- */
-function shuffle(items, rand) {
-  const a = [...items];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
 /** @param {string} date YYYY-MM-DD @param {number} days */
 function shiftDate(date, days) {
   const d = new Date(`${date}T00:00:00Z`);
@@ -116,12 +89,26 @@ function shiftDate(date, days) {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Site-relative path of an album's cover thumbnail, or null when none has
+ * been downloaded (the browser then shows the placeholder disc).
+ * @param {string} title
+ */
+function artPath(title) {
+  for (const ext of ['jpg', 'png', 'webp']) {
+    const rel = `${ART_DIR}/${albumSlug(title)}.${ext}`;
+    if (existsSync(root(rel))) return rel;
+  }
+  return null;
+}
+
 async function main() {
   const apiKey = readEnv('PHISHNET_API_KEY', root('.env'));
   if (!apiKey) throw new Error('PHISHNET_API_KEY is not set (environment or .env)');
 
-  const albums = readJson(DISCOGRAPHY_PATH);
-  if (!albums) throw new Error('data/discography.json missing; run scripts/fetch-discography.mjs');
+  /** @type {import('./lib/select.mjs').AlbumEntry[]} */
+  const albums = readJson(ALBUMS_PATH);
+  if (!albums) throw new Error('data/albums.json missing');
   const previous = full ? null : readJson(SONGS_PATH);
 
   console.log('fetching phish.net songs...');
@@ -163,7 +150,10 @@ async function main() {
       if (queried % 50 === 0) console.log(`  phish.in: ${queried} songs checked`);
       await sleep(PHISHIN_DELAY_MS);
     }
-    const original = BAND_ARTISTS.has(s.artist) || albumOf.has(key);
+    const album = albumOf.get(key) ?? null;
+    // On a studio-type record => the band's own song even if phish.net credits
+    // someone else; a live album proves nothing (Slip Stitch has ZZ Top's JJLC).
+    const original = BAND_ARTISTS.has(s.artist) || (album !== null && albums[album].type !== 'live');
     songs.push({
       id: s.songid,
       name: s.song,
@@ -171,7 +161,7 @@ async function main() {
       abbr: s.abbr || undefined, // fan shorthand like "YEM"; dropped from JSON when empty
       artist: s.artist,
       original,
-      album: albumOf.get(key) ?? null,
+      album,
       debut: s.debut,
       lastPlayed: s.last_played,
       gap: s.gap,
@@ -190,8 +180,8 @@ async function main() {
   writeJson(SONGS_PATH, {
     generatedAt: unchanged ? previous.generatedAt : new Date().toISOString(),
     latestShow,
-    sources: ['phish.net', 'phish.in', 'MusicBrainz'],
-    albums: albums.map((/** @type {any} */ a) => ({ title: a.title, year: a.year })),
+    sources: ['phish.net', 'phish.in', 'Wikipedia', 'MusicBrainz', 'Cover Art Archive'],
+    albums: albums.map((a) => ({ title: a.title, year: a.year, art: artPath(a.title) })),
     songs,
   });
 
@@ -200,11 +190,11 @@ async function main() {
   const schedule = readJson(SCHEDULE_PATH) ?? { epoch: SCHEDULE_EPOCH, order: [] };
   const scheduled = new Set(schedule.order);
   const fresh = songs
-    .filter((s) => s.original && s.timesPlayed >= ANSWER_MIN_PLAYS && s.longest && !scheduled.has(s.id))
+    .filter((s) => isAnswerEligible(s, ANSWER_THRESHOLDS) && !scheduled.has(s.id))
     .map((s) => s.id)
     .sort((a, b) => a - b);
   if (fresh.length) {
-    schedule.order.push(...shuffle(fresh, seededRandom(schedule.order.length + 1)));
+    schedule.order.push(...reshuffleAfter(fresh, 0, seededRandom(schedule.order.length + 1)));
     writeJson(SCHEDULE_PATH, schedule);
   }
 

@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Phishle</title>
-  <meta name="description" content="Guess the Phish song in 10 tries. Clues: album, debut, gap, and longest jam.">
-  <meta name="theme-color" content="#101a2e">
+  <meta name="description" content="Guess the Phish song in 10 tries. Clues: album, debut, times played, last played, gap, and longest jam.">
+  <meta name="theme-color" content="#121212">
   <!-- Content Security Policy: only this site's own files may load; data is same-origin JSON. -->
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+        content="default-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
 
   <!-- PWA + iOS home-screen support -->
   <link rel="manifest" href="manifest.json">
@@ -19,42 +19,65 @@
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 
+  <link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="css/style.css">
   <script type="module" src="js/app.js"></script>
 </head>
 <body>
   <header class="topbar">
-    <button class="icon-btn" id="help-btn" type="button" aria-label="How to play">?</button>
     <h1 class="logo">Phish<span>le</span></h1>
-    <div class="topbar-right">
-      <button class="icon-btn" id="practice-btn" type="button" aria-label="Practice mode" title="Practice mode">∞</button>
-      <button class="icon-btn" id="stats-btn" type="button" aria-label="Statistics" title="Statistics">▥</button>
-    </div>
+    <nav class="topbar-icons" aria-label="Game menu">
+      <button class="icon-btn" id="practice-btn" type="button" aria-label="Practice mode" title="Practice mode">
+        <svg id="icon-daily" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M7 2h2v2h6V2h2v2h2.5A1.5 1.5 0 0 1 21 5.5v14a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19.5v-14A1.5 1.5 0 0 1 4.5 4H7V2Zm12 7H5v10h14V9Zm-9 3h4v4h-4v-4Z"/></svg>
+        <svg id="icon-practice" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.6 6.62c-1.44 0-2.8.56-3.77 1.53L12 10.66 10.48 12h.01L7.8 14.39c-.64.64-1.49.99-2.4.99-1.87 0-3.39-1.51-3.39-3.38S3.53 8.62 5.4 8.62c.91 0 1.76.35 2.44 1.03l1.13 1 1.51-1.34L9.22 8.2A5.37 5.37 0 0 0 5.4 6.62C2.42 6.62 0 9.04 0 12s2.42 5.38 5.4 5.38c1.44 0 2.8-.56 3.77-1.53l2.83-2.5.01.01L13.52 12h-.01l2.69-2.39c.64-.64 1.49-.99 2.4-.99 1.87 0 3.39 1.51 3.39 3.38s-1.52 3.38-3.39 3.38c-.9 0-1.76-.35-2.44-1.03l-1.14-1.01-1.51 1.34 1.27 1.12a5.386 5.386 0 0 0 3.82 1.57c2.98 0 5.4-2.41 5.4-5.38s-2.42-5.37-5.4-5.37z"/></svg>
+      </button>
+      <button class="icon-btn" id="stats-btn" type="button" aria-label="Statistics" title="Statistics">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V11h3.5v9H4Zm6.25 0V7h3.5v13h-3.5ZM16.5 20V3H20v17h-3.5Z"/></svg>
+      </button>
+      <button class="icon-btn round" id="help-btn" type="button" aria-label="How to play" title="How to play">?</button>
+    </nav>
   </header>
 
   <main class="wrap">
-    <p class="mode-line" id="mode-line">Loading the setlist…</p>
+    <div class="status-line">
+      <span id="mode-line">Loading the setlist…</span>
+      <span id="counter" aria-live="polite"></span>
+    </div>
 
     <form class="search" id="search-form" autocomplete="off" hidden>
       <label class="visually-hidden" for="guess-input">Guess a Phish song</label>
-      <input id="guess-input" type="text" placeholder="Type a song (or YEM, DWD…)"
+      <input id="guess-input" type="text" placeholder="Type a guess here..."
              role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggestions"
              autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go">
+      <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>
       <ul class="suggestions" id="suggestions" role="listbox" hidden></ul>
     </form>
 
-    <p class="counter" id="counter" aria-live="polite"></p>
-
     <section class="result" id="result" hidden aria-live="polite"></section>
+
+    <p class="empty-hint" id="empty-hint" hidden>Guess the Phish song of the day.<br>Search for a song to make your first guess.</p>
 
     <ol class="guesses" id="guesses" reversed aria-label="Your guesses"></ol>
   </main>
 
   <footer class="footer">
-    Song data courtesy of <a href="https://phish.net" rel="noopener">Phish.net</a> /
-    The Mockingbird Foundation · durations from <a href="https://phish.in" rel="noopener">phish.in</a> ·
-    albums from <a href="https://musicbrainz.org" rel="noopener">MusicBrainz</a>.
-    <span id="data-date"></span> Fan-made; not affiliated with Phish.
+    <p class="credit">
+      Made by bot-bbio
+      <a class="credit-link" href="https://www.linkedin.com/in/alvvays/" rel="noopener" target="_blank" aria-label="LinkedIn" title="LinkedIn">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28ZM5.34 7.43a2.06 2.06 0 1 1 0-4.13 2.06 2.06 0 0 1 0 4.13ZM7.12 20.45H3.56V9h3.56v11.45ZM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.73C24 .77 23.2 0 22.22 0Z"/></svg>
+      </a>
+      <a class="credit-link" href="https://github.com/bot-bbio" rel="noopener" target="_blank" aria-label="GitHub" title="GitHub">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.07 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3Z"/></svg>
+      </a>
+    </p>
+    <p>
+      Song data courtesy of <a href="https://phish.net" rel="noopener">Phish.net</a> / The Mockingbird Foundation ·
+      durations from <a href="https://phish.in" rel="noopener">phish.in</a> ·
+      albums from <a href="https://www.wikipedia.org" rel="noopener">Wikipedia</a> and
+      <a href="https://musicbrainz.org" rel="noopener">MusicBrainz</a> · covers via
+      <a href="https://coverartarchive.org" rel="noopener">Cover Art Archive</a>.
+      <span id="data-date"></span> Fan-made; not affiliated with Phish. Inspired by Spotle.
+    </p>
   </footer>
 
   <dialog id="help-dialog" aria-labelledby="help-title">
@@ -66,9 +89,10 @@
       <li><span class="swatch correct"></span> Match</li>
       <li><span class="swatch close"></span> Close</li>
       <li><span class="swatch miss"></span> Not close</li>
-      <li><b>↑ / ↓</b> The answer is higher / lower (later, bigger, longer)</li>
+      <li><span class="help-arrows" aria-hidden="true">˄ ˅</span> The answer is higher / lower (later, more, longer)</li>
     </ul>
     <dl class="help-defs" id="help-defs"></dl>
+    <div class="help-credit" id="help-credit"></div>
   </dialog>
 
   <dialog id="stats-dialog" aria-labelledby="stats-title">

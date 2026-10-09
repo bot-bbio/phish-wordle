@@ -7,17 +7,31 @@
 // from them are percent-encoded.
 
 import {
-  MAX_GUESSES, ATTRIBUTES, DEBUT_CLOSE_YEARS, GAP_CLOSE_SHOWS, LONGEST_CORRECT_SECONDS, LONGEST_CLOSE_SECONDS,
+  MAX_GUESSES, ATTRIBUTES, ALBUM_CLOSE_YEARS, DEBUT_CLOSE_YEARS, PLAYS_CLOSE_RATIO, GAP_CLOSE_SHOWS,
+  LONGEST_CORRECT_SECONDS, LONGEST_CLOSE_SECONDS,
   compareSongs, localDateString, daysBetween, dailyAnswerId, puzzleNumber, searchSongs,
-  recordResult, shareText, formatDuration, formatDate,
+  recordResult, shareText, formatDuration, formatDate, formatMonthYear,
 } from './game.js';
 import { loadDailyGuesses, saveDailyGuesses, loadStats, saveStats, hasSeenHelp, markHelpSeen } from './storage.js';
 
 /** @typedef {import('./game.js').Song} Song */
 /** @typedef {import('./game.js').Album} Album */
 /** @typedef {import('./game.js').Comparison} Comparison */
+/** @typedef {typeof ATTRIBUTES[number]} Attribute */
 
-const ATTRIBUTE_LABELS = { album: 'Album', debut: 'Debut', gap: 'Gap', longest: 'Longest jam' };
+/** @type {Record<Attribute, string>} */
+const ATTRIBUTE_LABELS = {
+  album: 'Album', debut: 'Debut', timesPlayed: 'Played', lastPlayed: 'Last played', gap: 'Gap', longest: 'Longest jam',
+};
+
+// Spotle's rhythm: row one wide/narrow/wide, row two narrow/wide/narrow.
+/** @type {Attribute[][]} */
+const TILE_ROWS = [ATTRIBUTES.slice(0, 3), ATTRIBUTES.slice(3)];
+const WIDE_TILES = new Set(['album', 'timesPlayed', 'gap']);
+
+// Shown in the circle when a song is on no album: the app's own donut icon.
+const PLACEHOLDER_ART = 'icons/icon.svg';
+const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /**
  * @typedef {{
@@ -48,6 +62,38 @@ function el(tag, className, text) {
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
+}
+
+/**
+ * Downward chevron (Material "expand more" glyph); rotated for "higher".
+ * Built with DOM calls, not markup strings, like everything else here.
+ * @param {'higher' | 'lower'} direction
+ */
+function arrowIcon(direction) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', `tile-arrow${direction === 'higher' ? ' up' : ''}`);
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('d', 'M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z');
+  svg.append(path);
+  return svg;
+}
+
+/**
+ * The song's album cover (or the placeholder donut) as an <img>.
+ * @param {Song} song
+ * @param {string} className
+ */
+function albumArt(song, className) {
+  const album = song.album === null ? null : data.albums[song.album];
+  const img = /** @type {HTMLImageElement} */ (el('img', className));
+  img.src = album?.art ?? PLACEHOLDER_ART;
+  img.alt = album ? `${album.title} cover` : '';
+  img.width = 80;
+  img.height = 80;
+  img.decoding = 'async';
+  return img;
 }
 
 /** @param {string} message */
@@ -123,18 +169,20 @@ function submitGuess(song) {
 /** @param {{ animateNewest?: boolean }} [opts] */
 function renderAll({ animateNewest = false } = {}) {
   const daily = game.mode === 'daily';
-  $('mode-line').textContent = daily ? `Daily puzzle #${game.puzzle}` : 'Practice mode · random song, no stats';
-  $('practice-btn').textContent = daily ? '∞' : '☀';
+  $('mode-line').textContent = daily ? `Phishle #${game.puzzle}` : 'Practice · no stats';
+  $('icon-practice').toggleAttribute('hidden', !daily);
+  $('icon-daily').toggleAttribute('hidden', daily);
   $('practice-btn').setAttribute('aria-label', daily ? 'Practice mode' : 'Back to daily puzzle');
   $('practice-btn').title = daily ? 'Practice mode' : 'Back to daily puzzle';
 
   $('search-form').hidden = game.finished;
   $('counter').textContent = game.finished ? '' : `Guess ${game.guesses.length + 1} of ${MAX_GUESSES}`;
+  $('empty-hint').hidden = game.guesses.length > 0;
 
   const list = $('guesses');
   list.replaceChildren(
     ...game.guesses
-      .map((g, i) => renderGuess(g, compareSongs(g, game.answer), animateNewest && i === game.guesses.length - 1))
+      .map((g, i) => renderGuess(g, compareSongs(g, game.answer, data.albums), animateNewest && i === game.guesses.length - 1))
       .reverse(), // newest on top, like Spotle
   );
 
@@ -149,46 +197,56 @@ function renderAll({ animateNewest = false } = {}) {
 function renderGuess(song, cmp, animate) {
   const li = el('li', 'guess');
   const correct = song.id === game.answer.id;
-  const name = el('div', 'guess-name' + (correct ? ' is-correct' : ''), song.name);
-  li.append(name);
-  const tiles = el('div', 'tiles');
-  ATTRIBUTES.forEach((key, i) => {
-    const { value, sub } = describe(song, key);
-    const v = cmp[key];
-    const tile = el('div', `tile ${v.status}${animate ? ' reveal' : ''}`);
-    if (animate) tile.style.animationDelay = `${i * 150}ms`;
-    const arrow = v.direction === 'higher' ? '↑' : v.direction === 'lower' ? '↓' : '';
-    const hint = v.direction ? `, answer is ${v.direction}` : '';
-    tile.setAttribute('aria-label', `${ATTRIBUTE_LABELS[key]}: ${value} ${sub}, ${v.status}${hint}`);
-    const valueEl = el('span', 'tile-value', value);
-    if (arrow) valueEl.append(el('span', 'tile-arrow', arrow));
-    tile.append(el('span', 'tile-label', ATTRIBUTE_LABELS[key]), valueEl, el('span', 'tile-sub', sub));
-    tiles.append(tile);
-  });
-  li.append(tiles);
+  const head = el('div', 'guess-head');
+  head.append(albumArt(song, 'guess-art'), el('h2', 'guess-name' + (correct ? ' is-correct' : ''), song.name));
+  li.append(head);
+
+  let order = 0;
+  for (const keys of TILE_ROWS) {
+    const row = el('div', 'tile-row');
+    for (const key of keys) {
+      const { value, spoken } = describe(song, key);
+      const v = cmp[key];
+      const textual = key === 'album' || key === 'lastPlayed';
+      const tile = el('div', `tile ${v.status}${WIDE_TILES.has(key) ? ' wide' : ''}${textual ? ' text' : ''}${animate ? ' reveal' : ''}`);
+      if (animate) tile.style.animationDelay = `${order++ * 120}ms`;
+      const hint = v.direction ? `, answer is ${key === 'lastPlayed' ? (v.direction === 'higher' ? 'more recent' : 'older') : v.direction}` : '';
+      tile.setAttribute('aria-label', `${ATTRIBUTE_LABELS[key]}: ${spoken}, ${v.status}${hint}`);
+      const valueEl = el('span', 'tile-value' + (value.length > 16 ? ' long' : ''), value);
+      if (v.direction) valueEl.append(arrowIcon(v.direction));
+      tile.append(el('span', 'tile-label', ATTRIBUTE_LABELS[key]), valueEl);
+      row.append(tile);
+    }
+    li.append(row);
+  }
   return li;
 }
 
 /**
- * Display strings for one attribute of a song.
+ * Display strings for one attribute of a song: `value` for the tile and
+ * `spoken` (fuller) for screen readers.
  * @param {Song} song
- * @param {typeof ATTRIBUTES[number]} key
- * @returns {{ value: string, sub: string }}
+ * @param {Attribute} key
+ * @returns {{ value: string, spoken: string }}
  */
 function describe(song, key) {
   switch (key) {
     case 'album': {
       const album = song.album === null ? null : data.albums[song.album];
-      return album ? { value: album.title, sub: String(album.year) } : { value: 'None', sub: 'no studio album' };
+      return album ? { value: album.title, spoken: `${album.title}, ${album.year}` } : { value: 'None', spoken: 'not on an album' };
     }
     case 'debut':
-      return { value: song.debut.slice(0, 4), sub: formatDate(song.debut).replace(/, \d{4}$/, '') };
+      return { value: song.debut.slice(0, 4), spoken: formatDate(song.debut) };
+    case 'timesPlayed':
+      return { value: String(song.timesPlayed), spoken: `${song.timesPlayed} times` };
+    case 'lastPlayed':
+      return { value: formatMonthYear(song.lastPlayed), spoken: formatDate(song.lastPlayed) };
     case 'gap':
-      return { value: String(song.gap), sub: song.gap === 1 ? 'show' : 'shows' };
+      return { value: String(song.gap), spoken: `${song.gap} ${song.gap === 1 ? 'show' : 'shows'}` };
     case 'longest':
       return song.longest
-        ? { value: formatDuration(song.longest.seconds), sub: song.longest.date.slice(0, 4) }
-        : { value: '—', sub: 'not tracked' }; // no audio, or only ever filed inside a medley
+        ? { value: formatDuration(song.longest.seconds), spoken: `${formatDuration(song.longest.seconds)}, ${formatDate(song.longest.date)}` }
+        : { value: '—', spoken: 'not tracked' }; // no audio, or only ever filed inside a medley
   }
 }
 
@@ -204,20 +262,23 @@ function renderResult() {
     : 'Out of guesses. The song was:';
 
   const card = el('div', 'answer-card');
+  const head = el('div', 'answer-head');
   const title = el('a', 'answer-title', a.name);
   title.setAttribute('href', `https://phish.net/song/${encodeURIComponent(a.slug)}`);
   title.setAttribute('rel', 'noopener');
   title.setAttribute('target', '_blank');
-  card.append(title);
+  head.append(albumArt(a, 'answer-art'), title);
+  card.append(head);
 
   const facts = el('dl', 'answer-facts');
-  const album = a.album === null ? 'No studio album' : `${data.albums[a.album].title} (${data.albums[a.album].year})`;
+  const album = a.album === null ? 'Not on an album' : `${data.albums[a.album].title} (${data.albums[a.album].year})`;
   /** @type {[string, string][]} */
   const rows = [
     ['Album', album],
     ['Debut', formatDate(a.debut)],
     ['Times played', String(a.timesPlayed)],
-    ['Last played', `${formatDate(a.lastPlayed)} (gap ${a.gap})`],
+    ['Last played', formatDate(a.lastPlayed)],
+    ['Gap', `${a.gap} ${a.gap === 1 ? 'show' : 'shows'}`],
   ];
   if (a.longest) rows.push(['Longest jam', `${formatDuration(a.longest.seconds)} · ${formatDate(a.longest.date)}, ${a.longest.venue}`]);
   for (const [k, v] of rows) facts.append(el('dt', '', k), el('dd', '', v));
@@ -256,7 +317,7 @@ function timeUntilMidnight() {
 }
 
 async function shareResult() {
-  const rows = game.guesses.map((g) => compareSongs(g, game.answer));
+  const rows = game.guesses.map((g) => compareSongs(g, game.answer, data.albums));
   const text = `${shareText(game.puzzle, rows, game.won)}\n${location.origin}${location.pathname}`;
   try {
     if (navigator.share) await navigator.share({ text });
@@ -348,12 +409,17 @@ function renderHelp() {
   $('help-max').textContent = String(MAX_GUESSES);
   /** @type {[string, string][]} */
   const defs = [
-    ['Album', 'First studio album the song appeared on (the 1986 White Tape demo counts only for songs on no other album). Yellow = the album released just before or after. Arrow points to the answer’s album in release order. Songs never released on a studio album show “None”.'],
+    ['Album', `The album the song is filed under: its first studio album; otherwise The White Tape demo, A Live One, Slip Stitch and Pass, or Kasvot Växt. Songs from The Man Who Stepped into Yesterday (the Gamehendge saga) always count as that. Yellow = released within ${ALBUM_CLOSE_YEARS} years. Songs on no album show “None”.`],
     ['Debut', `Year Phish first played it live. Yellow = within ${DEBUT_CLOSE_YEARS} years.`],
-    ['Gap', `Shows since it was last played, per phish.net. Yellow = within ${GAP_CLOSE_SHOWS} shows.`],
-    ['Longest jam', `Longest standalone live version with audio on phish.in. Green = within ${LONGEST_CORRECT_SECONDS / 60} minute, yellow = within ${LONGEST_CLOSE_SECONDS / 60}. “Not tracked” = no audio, or the song only appears inside medley tracks.`],
+    ['Played', `Times played live, per phish.net. Yellow = within ${PLAYS_CLOSE_RATIO * 100}% of the answer’s count.`],
+    ['Last played', 'Month of the most recent performance. It’s the same fact as Gap shown as a date, so it’s always the same color as Gap. ˄ = the answer was played more recently, so its arrow points the opposite way from Gap’s.'],
+    ['Gap', `Shows since it was last played, per phish.net. Yellow = within ${GAP_CLOSE_SHOWS} shows. ˄ = the answer has gone longer without being played.`],
+    ['Longest jam', `Longest standalone live version with audio on phish.in. Green = within ${LONGEST_CORRECT_SECONDS / 60} minute, yellow = within ${LONGEST_CLOSE_SECONDS / 60}. “—” = no audio, or the song only appears inside medley tracks.`],
   ];
   $('help-defs').replaceChildren(...defs.flatMap(([k, v]) => [el('dt', '', k), el('dd', '', v)]));
+  // Same creator credit as the footer (links included), cloned rather than duplicated in the HTML.
+  const credit = document.querySelector('.footer .credit');
+  if (credit) $('help-credit').replaceChildren(credit.cloneNode(true));
 }
 
 function renderStats() {

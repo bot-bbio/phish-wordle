@@ -1,13 +1,13 @@
 {
   "name": "Phishle",
   "short_name": "Phishle",
-  "description": "Guess the Phish song in 10 tries. Clues: album, debut, gap, and longest jam.",
+  "description": "Guess the Phish song in 10 tries. Clues: album, debut, times played, last played, gap, and longest jam.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#101a2e",
-  "theme_color": "#101a2e",
+  "background_color": "#121212",
+  "theme_color": "#121212",
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },

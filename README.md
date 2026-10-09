@@ -2,27 +2,42 @@
 
 A daily guess-the-song game for Phish fans, in the style of
 [Spotle](https://spotle.io). You get 10 tries to name the mystery song. Each guess
-shows how it compares to the answer on four clues:
+shows its album cover and how it compares to the answer on six clues:
 
 | Clue | What it means | Green | Yellow | Arrow |
 |---|---|---|---|---|
-| **Album** | First studio album the song appeared on | Same album | The album released just before or after | Answer's album is later ↑ / earlier ↓ |
-| **Debut** | Year Phish first played it live | Same year | Within 2 years | Answer debuted later ↑ / earlier ↓ |
-| **Gap** | Shows since it was last played | Same gap | Within 10 shows | Answer's gap is bigger ↑ / smaller ↓ |
-| **Longest jam** | Longest standalone live version with audio | Within 1 minute | Within 5 minutes | Answer's is longer ↑ / shorter ↓ |
+| **Album** | The album the song is filed under (see below) | Same album | Released within 3 years | Answer's album is later ˄ / earlier ˅ |
+| **Debut** | Year Phish first played it live | Same year | Within 2 years | Answer debuted later ˄ / earlier ˅ |
+| **Played** | Times played live | Same count | Within 25% of the answer's count | Answer played more ˄ / less ˅ |
+| **Last played** | Month of the most recent performance | Same as Gap | Same as Gap | Answer played more recently ˄ / longer ago ˅ |
+| **Gap** | Shows since it was last played | Same gap | Within 10 shows | Answer's gap is bigger ˄ / smaller ˅ |
+| **Longest jam** | Longest standalone live version with audio | Within 1 minute | Within 5 minutes | Answer's is longer ˄ / shorter ˅ |
 
-Songs never released on a studio album show **None**. Two "None" songs match;
-"None" against a real album is a plain miss with no arrow. The 1986 *White Tape* demo
-counts only for songs on no other studio album, so *You Enjoy Myself* is a *Junta* song
-and *AC/DC Bag* is a *White Tape* song.
+**Last played and Gap are one fact in two formats** (a date vs. a count of shows), both
+from the same phish.net snapshot. Last played takes its color from the Gap comparison,
+so the two tiles always agree; their arrows point opposite ways because a bigger gap
+means an earlier date. A test checks this against every real song pair.
+
+**Albums.** A song on several albums is filed under one, in this order:
+
+1. *The Man Who Stepped into Yesterday* (1988, the Gamehendge thesis) claims every song
+   on it: *Possum*, *Wilson*, *The Lizards*, *AC/DC Bag*.
+2. Otherwise its earliest studio album: *You Enjoy Myself* is a *Junta* song.
+3. Otherwise the 1986 *White Tape* demo: *Slave to the Traffic Light*.
+4. Otherwise its earliest live album (*A Live One*, *Slip Stitch and Pass*,
+   *Kasvot Växt: í rokk*): *Harry Hood*, *Mike's Song*, *Turtle in the Clouds*.
+
+Songs on no album show **None** with a placeholder disc. Two "None" songs match; "None"
+against a real album is a plain miss with no arrow.
 
 A few songs show **—** for longest jam: phish.in has no standalone audio for them,
 usually because they're always filed inside a medley track ("Alumni Blues > Letter to
 Jimmy Page > Alumni Blues").
 
 Every guessable song Phish has played (originals and covers) can be entered. Fan
-shorthand works in the search box: `YEM`, `DWD`, `CDT`. Answers are drawn only from
-Phish originals played at least 40 times. **Practice mode** (∞) serves random songs
+shorthand works in the search box: `YEM`, `DWD`, `CDT`. Daily answers are band
+originals played at least 40 times, plus album songs (covers included) played at least 5
+times. **Practice mode** (∞) serves random songs
 without affecting your stats.
 
 Install it on your phone with **Share → Add to Home Screen** (iOS) or **Install app**
@@ -34,10 +49,15 @@ Install it on your phone with **Share → Add to Home Screen** (iOS) or **Instal
 |---|---|
 | Song list, debut date, gap, times played | [Phish.net API v5](https://docs.phish.net/) |
 | Longest version (duration, date, venue) | [phish.in API v2](https://phish.in/api-docs) |
-| Studio album tracklists | [MusicBrainz](https://musicbrainz.org), with a hand-curated album list |
+| Album tracklists | Hand-maintained [data/albums.json](data/albums.json), checked against [Wikipedia](https://en.wikipedia.org) and [MusicBrainz](https://musicbrainz.org) |
+| Album covers | [Cover Art Archive](https://coverartarchive.org) and Wikipedia, saved as 250px thumbnails in `img/albums/` |
+| Font | [Inter](https://rsms.me/inter/) (SIL Open Font License, see `fonts/OFL.txt`) |
 
 Song data courtesy of Phish.net and The Mockingbird Foundation, used under their
 non-commercial license. Phishle is free, fan-made, and not affiliated with Phish.
+The layout is modelled on Spotle; no Spotle code or assets are used.
+
+Made by bot-bbio · [LinkedIn](https://www.linkedin.com/in/alvvays/) · [GitHub](https://github.com/bot-bbio)
 
 ## Setup
 
@@ -56,7 +76,8 @@ Get a phish.net API key at <https://phish.net/api/keys>.
 |---|---|
 | `npm run data` | Incremental data refresh. Re-checks phish.in durations only for recently played songs |
 | `npm run data:full` | Re-query every song on phish.in (~1,000 requests, several minutes) |
-| `npm run discography` | Re-pull album tracklists from MusicBrainz (only needed when a new album comes out) |
+| `npm run art` | Download cover thumbnails for any album in `data/albums.json` that lacks one |
+| `node scripts/reshuffle-schedule.mjs` | Reshuffle future puzzles after a big change to the answer pool (never touches a puzzle any time zone has reached) |
 | `npm run icons` | Regenerate the app icons |
 
 ## Deployment
@@ -80,9 +101,12 @@ gh secret set PHISHNET_API_KEY
 
 ```
 scripts/                 (Node, runs at build time; holds the API key)
-  build-data.mjs         phish.net + phish.in + discography -> data/songs.json, data/schedule.json
-  fetch-discography.mjs  MusicBrainz -> data/discography.json
-data/                    baked JSON, committed; the only data the browser reads
+  build-data.mjs         phish.net + phish.in + data/albums.json -> data/songs.json, data/schedule.json
+  fetch-album-art.mjs    Cover Art Archive / Wikipedia -> img/albums/*.jpg
+  reshuffle-schedule.mjs one-off: reshuffle not-yet-reached puzzles
+data/                    albums.json (hand-edited) + baked JSON; the only data the browser reads
+img/albums/              cover thumbnails, served from this site (works offline, no third-party requests)
+fonts/                   self-hosted Inter
 js/                      (browser, ES modules, no build step)
   game.js                pure rules: comparisons, daily calendar, search, stats, share text
   normalize.js           title normalization, shared by browser search and data scripts
@@ -108,7 +132,10 @@ durations come from phish.in's audio archive. A track that bundles several songs
 (e.g. "YEM > Jam") is skipped, so a medley never counts as one song's jam. Soundchecks
 and tracks phish.in excludes from stats are skipped too.
 
-**Album.** phish.net has no discography endpoint. The album list is curated in
-`scripts/fetch-discography.mjs` because MusicBrainz's raw catalog includes side projects
-and reissue dates (it dates *Junta* to 1992, not 1989). For each album, the script takes the
-official edition with the fewest tracks to leave out bonus live cuts.
+**Album.** phish.net has no discography endpoint, and Phish releases albums rarely, so
+the tracklists live in a hand-maintained `data/albums.json` (title, year, type, tracks).
+Each album's `type` (`thesis`, `studio`, `demo`, `live`) drives the filing order
+above. Album years are original release years (*Junta* is 1989, not its 1992 CD
+reissue). Tracks that never match a phish.net song (studio-only cuts, *Montana*, which is a
+*Tweezer* excerpt) are logged by the build and ignored. To add an album, append it to
+the file in release order, run `npm run art`, then `npm run data`.

@@ -5,15 +5,18 @@
 //                                   cached copy when offline
 //   everything    stale-while-revalidate -> instant load from cache, with the
 //   else                          cache quietly updated for the next visit
+//                                 (album covers are cached this way the first
+//                                 time a guess shows them)
 //
 // Bump CACHE_VERSION to force every client to drop its old cache.
 
-const CACHE_VERSION = 'phishle-v1';
+const CACHE_VERSION = 'phishle-v2';
 
 const APP_SHELL = [
   './',
   'index.html',
   'css/style.css',
+  'fonts/inter-latin.woff2',
   'js/app.js',
   'js/game.js',
   'js/normalize.js',

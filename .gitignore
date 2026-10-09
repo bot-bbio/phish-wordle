@@ -16,3 +16,6 @@ mach.exe
 Thumbs.db
 .vscode/
 node_modules/
+
+# Local planning
+TASKS.md

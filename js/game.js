@@ -11,22 +11,29 @@ import { normalizeTitle } from './normalize.js';
  *   original: boolean, album: number | null, debut: string, lastPlayed: string,
  *   gap: number, timesPlayed: number, longest: Performance | null
  * }} Song
- * @typedef {{ title: string, year: number }} Album
+ * @typedef {{ title: string, year: number, art: string | null }} Album
  * @typedef {{ epoch: string, order: number[] }} Schedule
  *
  * A tile's verdict. `direction` says where the ANSWER lies relative to the
- * guess: "higher" = later album / later debut / bigger gap / longer jam.
+ * guess: "higher" = later album / later debut / more plays / more recently
+ * played / bigger gap / longer jam.
  * @typedef {'correct' | 'close' | 'miss'} Status
  * @typedef {'higher' | 'lower' | null} Direction
  * @typedef {{ status: Status, direction: Direction }} Verdict
- * @typedef {{ album: Verdict, debut: Verdict, gap: Verdict, longest: Verdict }} Comparison
+ * @typedef {{
+ *   album: Verdict, debut: Verdict, timesPlayed: Verdict,
+ *   lastPlayed: Verdict, gap: Verdict, longest: Verdict
+ * }} Comparison
  */
 
 export const MAX_GUESSES = 10;
-export const ATTRIBUTES = /** @type {const} */ (['album', 'debut', 'gap', 'longest']);
+// Tile order on screen: two rows of three.
+export const ATTRIBUTES = /** @type {const} */ (['album', 'debut', 'timesPlayed', 'lastPlayed', 'gap', 'longest']);
 
 // "Close" (yellow) thresholds. Exported so the help screen can quote them.
+export const ALBUM_CLOSE_YEARS = 3;
 export const DEBUT_CLOSE_YEARS = 2;
+export const PLAYS_CLOSE_RATIO = 0.25;
 export const GAP_CLOSE_SHOWS = 10;
 export const LONGEST_CORRECT_SECONDS = 60;
 export const LONGEST_CLOSE_SECONDS = 300;
@@ -68,17 +75,55 @@ function compareOptional(guess, answer, compare) {
 const yearOf = (date) => Number(date.slice(0, 4));
 
 /**
- * Score a guess against the answer, attribute by attribute.
- * Album "close" means the neighbouring studio album in release order.
+ * Album: green only for the same album. Otherwise compared by release year:
+ * yellow within ALBUM_CLOSE_YEARS, arrow toward the answer's year (no arrow
+ * for two different albums from the same year, e.g. Joy and Party Time).
+ * @param {number} guess album index
+ * @param {number} answer album index
+ * @param {Album[]} albums
+ * @returns {Verdict}
+ */
+function compareAlbums(guess, answer, albums) {
+  if (guess === answer) return { status: 'correct', direction: null };
+  const [g, a] = [albums[guess].year, albums[answer].year];
+  return {
+    status: Math.abs(a - g) <= ALBUM_CLOSE_YEARS ? 'close' : 'miss',
+    direction: a > g ? 'higher' : a < g ? 'lower' : null,
+  };
+}
+
+/**
+ * Last played shows the same fact as Gap (how long since the song was
+ * played), just as a date. Its color therefore mirrors the gap verdict
+ * exactly, so the two tiles can never disagree. Its arrow follows the date:
+ * "higher" = the answer was played more recently, which is always the
+ * opposite way from Gap's arrow (a smaller gap means a later date).
  * @param {Song} guess
  * @param {Song} answer
+ * @param {Verdict} gap
+ * @returns {Verdict}
+ */
+function compareLastPlayed(guess, answer, gap) {
+  if (gap.status === 'correct' || guess.lastPlayed === answer.lastPlayed) return { status: gap.status, direction: null };
+  return { status: gap.status, direction: answer.lastPlayed > guess.lastPlayed ? 'higher' : 'lower' };
+}
+
+/**
+ * Score a guess against the answer, attribute by attribute.
+ * @param {Song} guess
+ * @param {Song} answer
+ * @param {Album[]} albums album list the songs' `album` indexes point into
  * @returns {Comparison}
  */
-export function compareSongs(guess, answer) {
+export function compareSongs(guess, answer, albums) {
+  const gap = compareNumbers(guess.gap, answer.gap, 0, GAP_CLOSE_SHOWS);
   return {
-    album: compareOptional(guess.album, answer.album, (g, a) => compareNumbers(g, a, 0, 1)),
+    album: compareOptional(guess.album, answer.album, (g, a) => compareAlbums(g, a, albums)),
     debut: compareNumbers(yearOf(guess.debut), yearOf(answer.debut), 0, DEBUT_CLOSE_YEARS),
-    gap: compareNumbers(guess.gap, answer.gap, 0, GAP_CLOSE_SHOWS),
+    // Relative window: 25% of 400 plays is 100, of 40 plays is 10.
+    timesPlayed: compareNumbers(guess.timesPlayed, answer.timesPlayed, 0, answer.timesPlayed * PLAYS_CLOSE_RATIO),
+    lastPlayed: compareLastPlayed(guess, answer, gap),
+    gap,
     longest: compareOptional(guess.longest?.seconds ?? null, answer.longest?.seconds ?? null, (g, a) =>
       compareNumbers(g, a, LONGEST_CORRECT_SECONDS, LONGEST_CLOSE_SECONDS),
     ),
@@ -244,4 +289,9 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 /** @param {string} date YYYY-MM-DD -> "Jun 14, 1995" */
 export function formatDate(date) {
   return `${MONTHS[Number(date.slice(5, 7)) - 1]} ${Number(date.slice(8, 10))}, ${date.slice(0, 4)}`;
+}
+
+/** @param {string} date YYYY-MM-DD -> "Aug '25" (compact, for tiles) */
+export function formatMonthYear(date) {
+  return `${MONTHS[Number(date.slice(5, 7)) - 1]} '${date.slice(2, 4)}`;
 }
