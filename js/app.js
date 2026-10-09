@@ -409,12 +409,12 @@ function renderHelp() {
   $('help-max').textContent = String(MAX_GUESSES);
   /** @type {[string, string][]} */
   const defs = [
-    ['Album', `The album the song is filed under: its first studio album; otherwise The White Tape demo, A Live One, Slip Stitch and Pass, or Kasvot Växt. Songs from The Man Who Stepped into Yesterday (the Gamehendge saga) always count as that. Yellow = released within ${ALBUM_CLOSE_YEARS} years. Songs on no album show “None”.`],
-    ['Debut', `Year Phish first played it live. Yellow = within ${DEBUT_CLOSE_YEARS} years.`],
-    ['Played', `Times played live, per phish.net. Yellow = within ${PLAYS_CLOSE_RATIO * 100}% of the answer’s count.`],
-    ['Last played', 'Month of the most recent performance. It’s the same fact as Gap shown as a date, so it’s always the same color as Gap. ˄ = the answer was played more recently, so its arrow points the opposite way from Gap’s.'],
-    ['Gap', `Shows since it was last played, per phish.net. Yellow = within ${GAP_CLOSE_SHOWS} shows. ˄ = the answer has gone longer without being played.`],
-    ['Longest jam', `Longest standalone live version with audio on phish.in. Green = within ${LONGEST_CORRECT_SECONDS / 60} minute, yellow = within ${LONGEST_CLOSE_SECONDS / 60}. “—” = no audio, or the song only appears inside medley tracks.`],
+    ['Album', `The album the song is on. Yellow means the answer’s album came out within ${ALBUM_CLOSE_YEARS} years. Songs that never made it onto an album show “None.”`],
+    ['Debut', `The year Phish first played it. Yellow means you’re within ${DEBUT_CLOSE_YEARS} years.`],
+    ['Played', `How many times Phish has played it live. Yellow means you’re within ${PLAYS_CLOSE_RATIO * 100}%.`],
+    ['Last played', 'When Phish last played it. This is the same clue as Gap, shown as a date, so the two always share a color. ˄ means the answer was played more recently.'],
+    ['Gap', `How many shows since it was last played. Yellow means you’re within ${GAP_CLOSE_SHOWS} shows. ˄ means the answer has been waiting longer.`],
+    ['Longest jam', `The longest live version. Green means within ${LONGEST_CORRECT_SECONDS / 60} minute, yellow within ${LONGEST_CLOSE_SECONDS / 60} minutes. “—” means there’s no recording to measure.`],
   ];
   $('help-defs').replaceChildren(...defs.flatMap(([k, v]) => [el('dt', '', k), el('dd', '', v)]));
   // Same creator credit as the footer (links included), cloned rather than duplicated in the HTML.

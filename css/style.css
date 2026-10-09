@@ -376,7 +376,7 @@ dialog h3 { font-size: 0.85rem; margin: 18px 0 8px; color: var(--muted); text-tr
 .swatch.correct { background: var(--correct); }
 .swatch.close { background: var(--close); }
 .swatch.miss { background: var(--miss); }
-.help-arrows { width: 22px; text-align: center; font-weight: 800; flex: none; }
+.help-arrows { min-width: 22px; text-align: center; font-weight: 800; flex: none; white-space: nowrap; }
 
 .help-defs dt { font-weight: 800; margin-top: 12px; }
 .help-defs dd { margin: 2px 0 0; color: var(--muted); font-size: 0.92rem; }
