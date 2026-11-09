@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-13T17:17:46.652Z",
+ "generatedAt": "2026-11-09T20:20:01.398Z",
  "latestShow": "2026-10-12",
  "sources": [
   "phish.net",
@@ -7982,7 +7982,7 @@
    "gap": 3,
    "timesPlayed": 329,
    "longest": {
-    "seconds": 727,
+    "seconds": 724,
     "date": "1997-07-10",
     "venue": "Espace Julien, Marseilles, France"
    }
